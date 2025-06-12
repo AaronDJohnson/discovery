@@ -100,7 +100,7 @@ def config(**kwargs):
 
     SM_algorithm = 'indexed'
 
-config(backend='jax', factor='cholesky')
+config(backend='jax', factor='cholesky', precision='float64')
 
 def rngkey(seed):
     return jnpkey(seed)
