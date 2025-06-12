@@ -1690,7 +1690,8 @@ class VectorWoodburyKernel_varP(VariableKernel):
             if Pinv.ndim == 2:
                 # Pinv is diagonal
                 i1, i2 = jnp.diag_indices(Pinv.shape[1], ndim=2)
-                cf = matrix_factor(FtNmF.at[:,i1,i2].add(Pinv))
+                epsilon = 1e-3
+                cf = matrix_factor(FtNmF.at[:,i1,i2].add(Pinv + epsilon * jnp.ones(Pinv.shape[1])))
             else:
                 cf = matrix_factor(FtNmF + Pinv)
 
