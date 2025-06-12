@@ -10,6 +10,12 @@ import jax.numpy
 import jax.scipy
 import jax.tree_util
 
+def jittered_cholesky(A, jitter=0.1):
+    """
+    Adds a small jitter to the diagonal of matrix A to ensure numerical stability.
+    """
+    return jax.scipy.linalg.cho_factor(A + jitter * np.eye(A.shape[0]))
+
 def config(**kwargs):
     global jnp, jsp, jnparray, jnpzeros, intarray, jnpkey, jnpsplit, jnpnormal
     global matrix_factor, matrix_solve, matrix_norm, partial, SM_algorithm
@@ -24,8 +30,9 @@ def config(**kwargs):
     jax.numpy.makearray = lambda a: jax.numpy.array(a) if hasattr(a, '__len__') else a
 
     backend = kwargs.get('backend')
+    precision = kwargs.get('precision', 'float64')
 
-    if backend == 'numpy':
+    if backend == 'numpy' and precision == 'float64':
         jnp, jsp = np, sp
 
         jnparray = lambda a: np.array(a, dtype=np.float64)
@@ -37,7 +44,7 @@ def config(**kwargs):
         jnpnormal = lambda gen, shape: gen.normal(size=shape)
 
         partial = functools.partial
-    elif backend == 'jax':
+    elif backend == 'jax' and precision == 'float64':
         jnp, jsp = jax.numpy, jax.scipy
 
         jnparray = lambda a: jnp.array(a, dtype=jnp.float64 if jax.config.x64_enabled else jnp.float32)
@@ -50,10 +57,40 @@ def config(**kwargs):
 
         partial = jax.tree_util.Partial
 
+    elif backend == 'numpy' and precision == 'float32':
+        jnp, jsp = np, sp
+
+        jnparray = lambda a: np.array(a, dtype=np.float32)
+        jnpzeros = lambda a: np.zeros(a, dtype=np.float32)
+        intarray = lambda a: np.array(a, dtype=np.int32)
+
+        jnpkey    = lambda seed: np.random.default_rng(seed)
+        jnpsplit  = lambda gen: (gen, gen)
+        jnpnormal = lambda gen, shape: gen.normal(size=shape)
+
+        partial = functools.partial
+
+    elif backend == 'jax' and precision == 'float32':
+        jnp, jsp = jax.numpy, jax.scipy
+
+        jnparray = lambda a: jnp.array(a, dtype=jnp.float32)
+        jnpzeros = lambda a: jnp.zeros(a, dtype=jnp.float32)
+        intarray = lambda a: jnp.array(a, dtype=jnp.int32)
+
+        jnpkey    = lambda seed: jax.random.PRNGKey(seed)
+        jnpsplit  = jax.random.split
+        jnpnormal = jax.random.normal
+
+        partial = jax.tree_util.Partial
+
     factor = kwargs.get('factor')
 
-    if factor == 'cholesky':
+    if factor == 'cholesky' and precision == 'float64':
         matrix_factor = jsp.linalg.cho_factor
+        matrix_solve  = jsp.linalg.cho_solve
+        matrix_norm   = 2.0
+    elif factor == 'cholesky' and precision == 'float32':
+        matrix_factor = jittered_cholesky
         matrix_solve  = jsp.linalg.cho_solve
         matrix_norm   = 2.0
     elif factor == 'lu':
@@ -1691,7 +1728,7 @@ class VectorWoodburyKernel_varP(VariableKernel):
                 # Pinv is diagonal
                 i1, i2 = jnp.diag_indices(Pinv.shape[1], ndim=2)
                 epsilon = 1e-3
-                cf = matrix_factor(FtNmF.at[:,i1,i2].add(Pinv + epsilon * jnp.ones(Pinv.shape[1])))
+                cf = matrix_factor(FtNmF.at[:,i1,i2].add(Pinv))
             else:
                 cf = matrix_factor(FtNmF + Pinv)
 
